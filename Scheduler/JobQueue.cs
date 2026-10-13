@@ -8,17 +8,22 @@ namespace Scheduler
 
         private BlockingCollection<Action> _jobQueue;
 
-        private Thread _worker;
+        private int _numberOfThreads;
 
-        private CancellationTokenSource _cts;
+        private Thread[]? _workers;
+
+        private CancellationTokenSource? _cts;
 
         #endregion
 
         #region Constructor
 
-        public JobQueue()
+        public JobQueue(int numberOfThreads = 1)
         {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(numberOfThreads, nameof(numberOfThreads));
+
             _jobQueue = new BlockingCollection<Action>();
+            _numberOfThreads = numberOfThreads;
         }
 
         #endregion
@@ -37,41 +42,49 @@ namespace Scheduler
         /// Begins processing the jobs in the queue in a loop.
         /// </summary>
         public void StartProcess()
-        { 
-              if (_worker is null)
-              {
-                  _cts = new CancellationTokenSource();
+        {
+            if (_workers is null)
+            {
+                _cts = new CancellationTokenSource();
 
-                  CancellationToken cancellationToken = _cts.Token;
+                CancellationToken cancellationToken = _cts.Token;
 
-                  _worker = new Thread(() => ProcessJobs(cancellationToken));
+                _workers = new Thread[_numberOfThreads];
 
-                  _worker.Start();
-              }
-              else
-              {
-                  throw new InvalidOperationException();
-              }     
+                for (int i=0; i<_numberOfThreads; i++)
+                {
+                    _workers[i] = new Thread(() => ProcessJobs(cancellationToken));
+                    _workers[i].Name = $"Worker-{i+1}";
+                    _workers[i].Start();
+                }
+            }
+            else
+            {
+                throw new InvalidOperationException("The process is already running");
+            }
         }
 
         /// <summary>
         /// Stops the currently running process, if any.
         /// Queued jobs - will remain in the queue and can be processed later.
         /// Running jobs - will be finished before the process stops.
-        /// Blocks until the worker thread has returned.
+        /// Blocks until the worker threads has returned.
         /// </summary>
         public void StopProcess()
         {
-            if (_worker is not null)
+            if (_workers is not null)
             {
-                _cts.Cancel();
+                _cts!.Cancel();
 
-                _worker.Join();
+                foreach (Thread t in _workers)
+                {
+                    t.Join();
+                }
 
                 _cts.Dispose();
 
-                _worker = null;
-            }   
+                _workers = null;
+            }
         }
 
         #region Private Methods
@@ -92,7 +105,7 @@ namespace Scheduler
                     }
                 }
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException)
             {
                 // Operation is cancelled
             }
