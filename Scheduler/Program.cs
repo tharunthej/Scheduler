@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
-Console.WriteLine(Environment.ProcessorCount.ToString());
+// Console.WriteLine(Environment.ProcessorCount.ToString());
 
 /*
 List<int> threads = [10, 16, 20, 32, 64];
@@ -106,13 +106,14 @@ Console.WriteLine(timeElapsed.TotalMilliseconds);
 // Stage 2, step 5b
 
 // Work Calibration
+/*
 static long Work(int n)
 {
     long total = 0;
     for (int i = 0; i < n; i++) total += (long)i * i;
     return total;
 }
-
+*/
 /*
 int n = 15285;          // size of ONE job (the number you tune)
 int calls = 10000;   // repetitions, only to make timing measurable
@@ -128,7 +129,7 @@ Console.WriteLine($"{ms / calls * 1000:F3} µs per call (sink={sink})");
 */
 
 // Test
-
+/*
 JobQueue queue = new JobQueue(1);
 
 int n = 15285;
@@ -160,3 +161,51 @@ double timeElapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
 
 queue.StopProcess();
 Console.WriteLine(timeElapsed);
+*/
+
+// Stage 3, step 3
+CountdownEvent countdown = new(6);
+
+JobQueue queue = new(1);
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, Low-1");
+    countdown.Signal();
+},Priority.Low);
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, Normal-1");
+    countdown.Signal();
+});
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, High-1");
+    countdown.Signal();
+}, Priority.High);
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, Normal-2");
+    countdown.Signal();
+}, Priority.Moderate);
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, High-2");
+    countdown.Signal();
+}, Priority.High);
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, Low-2");
+    countdown.Signal();
+}, Priority.Low);
+
+queue.StartProcess();
+
+countdown.Wait();
+
+queue.StopProcess();
