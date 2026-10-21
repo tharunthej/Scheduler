@@ -212,13 +212,12 @@ countdown.Wait();
 
 queue.StopProcess();
 */
-
+/*
 JobQueue queue = new();
 CountdownEvent countdown = new(12);
 int count = 0;
 List<Priority> list = new(12);
 
-/*
 for (int i = 0; i< 4; i++)
 {
     Thread thread = new Thread(() =>
@@ -258,6 +257,7 @@ for (int i = 0; i< 4; i++)
 }
 */
 
+/*
 for (int i = 0; i < 12;  i++)
 {
     if (i%3 == 0)
@@ -299,3 +299,88 @@ countdown.Wait();
 queue.StopProcess();
 
 list.ForEach(p => Console.WriteLine(p.ToString()));
+*/
+
+/*
+long start = Stopwatch.GetTimestamp();
+
+for (int i = 0; i < 100;  i++)
+{
+    Thread.Sleep(5);
+}
+
+double timeelapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+
+Console.WriteLine($"Time per loop for 5ms: {timeelapsed / 100}");
+
+start = Stopwatch.GetTimestamp();
+
+for (int i = 0; i < 100; i++)
+{
+    Thread.Sleep(10);
+}
+
+timeelapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+
+Console.WriteLine($"Time per loop for 10ms: {timeelapsed / 100}");
+
+*/
+
+JobQueue queue = new();
+int count = 0;
+CountdownEvent countdown = new(1);
+long start = Stopwatch.GetTimestamp();
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Low job started after: {Stopwatch.GetElapsedTime(start)}");
+    countdown.Signal();
+    long end = Stopwatch.GetTimestamp();
+    Console.WriteLine($"Low job ended after : {Stopwatch.GetElapsedTime(start)}");
+},Priority.Low);
+Console.WriteLine($"Low job submitted time: {Stopwatch.GetElapsedTime(start)}");
+
+for (int i = 0; i < 3; i++)
+{
+    queue.Submit(() =>
+    {
+        count++;
+        Thread.Sleep(20);
+    }, Priority.High);
+}
+
+Thread thread = new(() =>
+{
+    long start = Stopwatch.GetTimestamp();
+    TimeSpan threesecs = TimeSpan.FromSeconds(3);
+
+    while(true)
+    {
+        TimeSpan timeElapsed = Stopwatch.GetElapsedTime(start);
+        if (timeElapsed >= threesecs) break;
+
+        for (int i = 0; i < 3; i++)
+        {
+            queue.Submit(() =>
+            {
+                count++;
+                Thread.Sleep(20);
+            }, Priority.High);
+        }
+
+        Thread.Sleep(5);
+    }
+});
+
+queue.StartProcess();
+
+thread.Start();
+
+thread.Join();
+
+countdown.Wait();
+
+queue.StopProcess();
+
+Console.WriteLine($"Count: {count}");
+
