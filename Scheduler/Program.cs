@@ -164,6 +164,8 @@ Console.WriteLine(timeElapsed);
 */
 
 // Stage 3, step 3
+
+/*
 CountdownEvent countdown = new(6);
 
 JobQueue queue = new(1);
@@ -209,3 +211,91 @@ queue.StartProcess();
 countdown.Wait();
 
 queue.StopProcess();
+*/
+
+JobQueue queue = new();
+CountdownEvent countdown = new(12);
+int count = 0;
+List<Priority> list = new(12);
+
+/*
+for (int i = 0; i< 4; i++)
+{
+    Thread thread = new Thread(() =>
+    {
+        for (int j = 0; j < 50; j++)
+        {
+            if (j%2 == 0)
+            {
+                queue.Submit(() =>
+                {
+                    Interlocked.Increment(ref count);
+                    Thread.Sleep(100);
+                    countdown.Signal();
+                }, Priority.High);
+            }
+            else if (j % 3 == 0)
+            {
+                queue.Submit(() =>
+                {
+                    Interlocked.Increment(ref count);
+                    Thread.Sleep(100);
+                    countdown.Signal();
+                }, Priority.Moderate);
+            }
+            else
+            {
+                queue.Submit(() =>
+                {
+                    Interlocked.Increment(ref count);
+                    Thread.Sleep(100);
+                    countdown.Signal();
+                }, Priority.Low);
+            }
+        }
+    });
+    thread.Start();
+}
+*/
+
+for (int i = 0; i < 12;  i++)
+{
+    if (i%3 == 0)
+    {
+        queue.Submit(() =>
+        {
+            list.Add(Priority.High);
+            Thread.Sleep(50);
+            countdown.Signal();
+        },Priority.High);
+    }
+    else if (i % 3 == 1)
+    {
+        queue.Submit(() =>
+        {
+            list.Add(Priority.Moderate);
+            Thread.Sleep(50);
+            countdown.Signal();
+        }, Priority.Moderate);
+    }
+    else
+    {
+        queue.Submit(() =>
+        {
+            list.Add(Priority.Low);
+            Thread.Sleep(50);
+            countdown.Signal();
+        }, Priority.Low);
+    }
+}
+
+queue.StartProcess();
+Thread.Sleep(250);
+queue.StopProcess();
+list.ForEach(p => Console.WriteLine(p.ToString()));
+
+queue.StartProcess();
+countdown.Wait();
+queue.StopProcess();
+
+list.ForEach(p => Console.WriteLine(p.ToString()));
