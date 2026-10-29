@@ -326,6 +326,7 @@ Console.WriteLine($"Time per loop for 10ms: {timeelapsed / 100}");
 
 */
 
+/*
 JobQueue queue = new();
 int count = 0;
 CountdownEvent countdown = new(1);
@@ -383,4 +384,16 @@ countdown.Wait();
 queue.StopProcess();
 
 Console.WriteLine($"Count: {count}");
+
+
+start = Stopwatch.GetTimestamp();
+TimeSpan interval = TimeSpan.FromSeconds(2);
+
+foreach (double seconds in new[] { 1.0, 2.1, 4.1, 9.1 })
+{
+    long now = start + (long)(seconds * Stopwatch.Frequency);
+    Console.WriteLine($"{seconds} s -> {JobQueue.GetEffectivePriority(2, start, now, interval)}");
+}
+
+*/
 
