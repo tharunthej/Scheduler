@@ -397,3 +397,55 @@ foreach (double seconds in new[] { 1.0, 2.1, 4.1, 9.1 })
 
 */
 
+
+async Task Job()
+{
+    await Task.Delay(1000);
+}
+
+/*
+// Test A: Fire and Forget
+List<Task> tasks = new List<Task>();
+
+long start = Stopwatch.GetTimestamp();
+for (int i = 0; i < 10; i++)
+{
+    tasks.Add(Job());
+}
+
+Task.WhenAll(tasks).Wait();
+TimeSpan timeElapsed = Stopwatch.GetElapsedTime(start);
+Console.WriteLine($"Total time for 10 jobs: {timeElapsed.TotalMilliseconds} ms");
+*/
+
+// Test B: Blocking Call
+Thread thread1 = new Thread(() =>
+{
+    for (int i = 0; i < 5; i++)
+    {
+        Console.WriteLine($"Before awaiter. Thread Id: {Thread.CurrentThread.ManagedThreadId}, Is Thread Pool Thread: {Thread.CurrentThread.IsThreadPoolThread}");
+        Job().GetAwaiter().GetResult();
+        Console.WriteLine($"After awaiter. Thread Id: {Thread.CurrentThread.ManagedThreadId}, Is Thread Pool Thread: {Thread.CurrentThread.IsThreadPoolThread}");
+    }
+});
+
+Thread thread2 = new Thread(() =>
+{
+    for (int i = 0; i < 5; i++)
+    {
+        Console.WriteLine($"Before awaiter. Thread Id: {Thread.CurrentThread.ManagedThreadId}, Is Thread Pool Thread: {Thread.CurrentThread.IsThreadPoolThread}");
+        Job().GetAwaiter().GetResult();
+        Console.WriteLine($"After awaiter. Thread Id: {Thread.CurrentThread.ManagedThreadId}, Is Thread Pool Thread: {Thread.CurrentThread.IsThreadPoolThread}");
+    }
+});
+
+long start = Stopwatch.GetTimestamp();
+
+thread1.Start();
+thread2.Start();
+
+thread1.Join();
+thread2.Join();
+
+TimeSpan timeElapsed = Stopwatch.GetElapsedTime(start);
+Console.WriteLine($"Total time for blocking call: {timeElapsed.TotalMilliseconds} ms");
