@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
-Console.WriteLine(Environment.ProcessorCount.ToString());
+// Console.WriteLine(Environment.ProcessorCount.ToString());
 
 /*
 List<int> threads = [10, 16, 20, 32, 64];
@@ -106,13 +106,14 @@ Console.WriteLine(timeElapsed.TotalMilliseconds);
 // Stage 2, step 5b
 
 // Work Calibration
+/*
 static long Work(int n)
 {
     long total = 0;
     for (int i = 0; i < n; i++) total += (long)i * i;
     return total;
 }
-
+*/
 /*
 int n = 15285;          // size of ONE job (the number you tune)
 int calls = 10000;   // repetitions, only to make timing measurable
@@ -128,7 +129,7 @@ Console.WriteLine($"{ms / calls * 1000:F3} µs per call (sink={sink})");
 */
 
 // Test
-
+/*
 JobQueue queue = new JobQueue(1);
 
 int n = 15285;
@@ -160,3 +161,226 @@ double timeElapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
 
 queue.StopProcess();
 Console.WriteLine(timeElapsed);
+*/
+
+// Stage 3, step 3
+
+/*
+CountdownEvent countdown = new(6);
+
+JobQueue queue = new(1);
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, Low-1");
+    countdown.Signal();
+},Priority.Low);
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, Normal-1");
+    countdown.Signal();
+});
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, High-1");
+    countdown.Signal();
+}, Priority.High);
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, Normal-2");
+    countdown.Signal();
+}, Priority.Moderate);
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, High-2");
+    countdown.Signal();
+}, Priority.High);
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Name of the thread: {Thread.CurrentThread.Name}, Is managed thread: {Thread.CurrentThread.IsThreadPoolThread}, Low-2");
+    countdown.Signal();
+}, Priority.Low);
+
+queue.StartProcess();
+
+countdown.Wait();
+
+queue.StopProcess();
+*/
+/*
+JobQueue queue = new();
+CountdownEvent countdown = new(12);
+int count = 0;
+List<Priority> list = new(12);
+
+for (int i = 0; i< 4; i++)
+{
+    Thread thread = new Thread(() =>
+    {
+        for (int j = 0; j < 50; j++)
+        {
+            if (j%2 == 0)
+            {
+                queue.Submit(() =>
+                {
+                    Interlocked.Increment(ref count);
+                    Thread.Sleep(100);
+                    countdown.Signal();
+                }, Priority.High);
+            }
+            else if (j % 3 == 0)
+            {
+                queue.Submit(() =>
+                {
+                    Interlocked.Increment(ref count);
+                    Thread.Sleep(100);
+                    countdown.Signal();
+                }, Priority.Moderate);
+            }
+            else
+            {
+                queue.Submit(() =>
+                {
+                    Interlocked.Increment(ref count);
+                    Thread.Sleep(100);
+                    countdown.Signal();
+                }, Priority.Low);
+            }
+        }
+    });
+    thread.Start();
+}
+*/
+
+/*
+for (int i = 0; i < 12;  i++)
+{
+    if (i%3 == 0)
+    {
+        queue.Submit(() =>
+        {
+            list.Add(Priority.High);
+            Thread.Sleep(50);
+            countdown.Signal();
+        },Priority.High);
+    }
+    else if (i % 3 == 1)
+    {
+        queue.Submit(() =>
+        {
+            list.Add(Priority.Moderate);
+            Thread.Sleep(50);
+            countdown.Signal();
+        }, Priority.Moderate);
+    }
+    else
+    {
+        queue.Submit(() =>
+        {
+            list.Add(Priority.Low);
+            Thread.Sleep(50);
+            countdown.Signal();
+        }, Priority.Low);
+    }
+}
+
+queue.StartProcess();
+Thread.Sleep(250);
+queue.StopProcess();
+list.ForEach(p => Console.WriteLine(p.ToString()));
+
+queue.StartProcess();
+countdown.Wait();
+queue.StopProcess();
+
+list.ForEach(p => Console.WriteLine(p.ToString()));
+*/
+
+/*
+long start = Stopwatch.GetTimestamp();
+
+for (int i = 0; i < 100;  i++)
+{
+    Thread.Sleep(5);
+}
+
+double timeelapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+
+Console.WriteLine($"Time per loop for 5ms: {timeelapsed / 100}");
+
+start = Stopwatch.GetTimestamp();
+
+for (int i = 0; i < 100; i++)
+{
+    Thread.Sleep(10);
+}
+
+timeelapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+
+Console.WriteLine($"Time per loop for 10ms: {timeelapsed / 100}");
+
+*/
+
+JobQueue queue = new();
+int count = 0;
+CountdownEvent countdown = new(1);
+long start = Stopwatch.GetTimestamp();
+
+queue.Submit(() =>
+{
+    Console.WriteLine($"Low job started after: {Stopwatch.GetElapsedTime(start)}");
+    countdown.Signal();
+    long end = Stopwatch.GetTimestamp();
+    Console.WriteLine($"Low job ended after : {Stopwatch.GetElapsedTime(start)}");
+},Priority.Low);
+Console.WriteLine($"Low job submitted time: {Stopwatch.GetElapsedTime(start)}");
+
+for (int i = 0; i < 3; i++)
+{
+    queue.Submit(() =>
+    {
+        count++;
+        Thread.Sleep(20);
+    }, Priority.High);
+}
+
+Thread thread = new(() =>
+{
+    long start = Stopwatch.GetTimestamp();
+    TimeSpan threesecs = TimeSpan.FromSeconds(3);
+
+    while(true)
+    {
+        TimeSpan timeElapsed = Stopwatch.GetElapsedTime(start);
+        if (timeElapsed >= threesecs) break;
+
+        for (int i = 0; i < 3; i++)
+        {
+            queue.Submit(() =>
+            {
+                count++;
+                Thread.Sleep(20);
+            }, Priority.High);
+        }
+
+        Thread.Sleep(5);
+    }
+});
+
+queue.StartProcess();
+
+thread.Start();
+
+thread.Join();
+
+countdown.Wait();
+
+queue.StopProcess();
+
+Console.WriteLine($"Count: {count}");
+
