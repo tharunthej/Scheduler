@@ -51,15 +51,34 @@ namespace Scheduler
         #endregion
 
         /// <summary>
-        /// Adds a job to the queue for processing.
+        /// Adds a job to the queue for processing. (only for synchronous jobs)
         /// </summary>
-        /// <param name="work">Job that needs to be run</param>
+        /// <param name="action">Job that needs to be run</param>
         /// <param name="priority">Priority of the job</param>
-        public void Submit(Action work, Priority priority = Priority.Moderate)
+        public void Submit(Action action, Priority priority = Priority.Moderate)
+        {
+            ArgumentNullException.ThrowIfNull(action);
+
+            Func<Task> wrappedAction = () =>
+            {
+                action();
+                return Task.CompletedTask;
+            };
+            
+            Submit(wrappedAction, priority);
+        }
+
+        /// <summary>
+        /// Adds a job to queue for processing. (For async jobs)
+        /// </summary>
+        /// <param name="work">Wrok that needs to be run asynchronously</param>
+        /// <param name="priority">Priority of the work</param>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
+        public void Submit(Func<Task> work, Priority priority = Priority.Moderate)
         {
             ArgumentNullException.ThrowIfNull(work);
 
-            if(!Enum.IsDefined(priority))
+            if (!Enum.IsDefined(priority))
             {
                 throw new ArgumentOutOfRangeException(nameof(priority), priority, "Invalid order priority value provided.");
             }
@@ -68,9 +87,9 @@ namespace Scheduler
             {
                 var timestamp = Stopwatch.GetTimestamp();
                 Job job = new Job(work, timestamp);
-                _jobQueues[(int) priority].Enqueue(job);
+                _jobQueues[(int)priority].Enqueue(job);
             }
-            
+
             _semaphore.Release();
         }
 
@@ -133,7 +152,7 @@ namespace Scheduler
                 {
                     _semaphore.Wait(cancellationToken);
                     
-                    if (!TryTakeNextJob(out Action? work))
+                    if (!TryTakeNextJob(out Func<Task>? work))
                     {
                         Debug.Fail("A worker held a ticket but no job found. This should never happen.");
                         continue;
@@ -141,7 +160,7 @@ namespace Scheduler
 
                     try
                     {
-                        work.Invoke();
+                        work().GetAwaiter().GetResult();
                     }
                     catch (Exception ex)
                     {
@@ -176,7 +195,7 @@ namespace Scheduler
         /// Picks the next job (best effective priority; oldest wins a tie) and removes it
         /// from its queue. Returns false if every queue is empty.
         /// </summary>
-        private bool TryTakeNextJob([NotNullWhen(true)] out Action? work)
+        private bool TryTakeNextJob([NotNullWhen(true)] out Func<Task>? work)
         {
             lock (_lock)
             {
@@ -196,7 +215,7 @@ namespace Scheduler
                     int effective = GetEffectivePriority(i, head.EnqueuedAt, now, _agingInterval);
 
                     bool isBetter = effective < bestEffectivePriority
-                        || (effective == bestEffectivePriority && head.EnqueuedAt < bestEnqueuedAt);   // tie: oldest first
+                         || (effective == bestEffectivePriority && head.EnqueuedAt < bestEnqueuedAt);   // tie: oldest first
 
                     if (isBetter)
                     {
