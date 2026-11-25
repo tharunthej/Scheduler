@@ -551,6 +551,7 @@ TimeSpan timeElapsed = Stopwatch.GetElapsedTime(start);
 Console.WriteLine($"Total time for 50 threads for Experiment X: {timeElapsed.TotalMilliseconds} ms");
 */
 
+/*
 // Experiment - Y
 JobQueue queue = new JobQueue(50);
 CountdownEvent countdown = new CountdownEvent(50);
@@ -580,3 +581,154 @@ TimeSpan timeElapsedforStop = Stopwatch.GetElapsedTime(start);
 
 Console.WriteLine($"Total time for 50 jobs before stop: {timeElapsed.TotalMilliseconds} ms");
 Console.WriteLine($"Total time for 50 jobs after stop: {timeElapsedforStop.TotalMilliseconds} ms");
+*/
+
+/*
+// Test for async jobs with exception handling
+int jobs = 1000;
+JobQueue queue = new JobQueue(jobs);
+CountdownEvent countdown = new CountdownEvent(jobs);
+
+for (int i = 0; i < jobs; i++)
+{
+    queue.Submit(async () =>
+    {
+        await Task.Delay(1000);
+        countdown.Signal();
+    });
+}
+
+long start = Stopwatch.GetTimestamp();
+
+Console.WriteLine("Thread count before processing: {0}", Process.GetCurrentProcess().Threads.Count);
+
+queue.StartProcess();
+
+countdown.Wait();
+
+TimeSpan timeElapsed = Stopwatch.GetElapsedTime(start);
+
+Console.WriteLine("Total time for {0} async jobs: {1} ms", jobs, timeElapsed.TotalMilliseconds);
+Console.WriteLine("Thread count after processing: {0}", Process.GetCurrentProcess().Threads.Count);
+
+queue.StopProcess();
+*/
+
+//ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
+//Console.WriteLine($"ThreadPool.GetMinThreads: Worker Threads = {workerThreads}, Completion Port Threads = {completionPortThreads}");
+
+/*
+// Test with 50 workers, 50 sync jobs of Thread.Sleep(1000)
+int jobs = 50;
+int workers = 50;
+Console.WriteLine($"Test with 50 workers, 50 sync jobs of Thread.Sleep(1000)");
+
+JobQueue queue = new JobQueue(workers);
+CountdownEvent countdown = new CountdownEvent(jobs);
+
+for (int i = 0; i < jobs; i++)
+{
+    queue.Submit(() =>
+    {
+        Thread.Sleep(1000);
+        countdown.Signal();
+    });
+}
+
+long start = Stopwatch.GetTimestamp();
+
+queue.StartProcess();
+
+countdown.Wait();
+
+TimeSpan timeElapsed = Stopwatch.GetElapsedTime(start);
+
+queue.StopProcess();
+
+Console.WriteLine($"Total time for {jobs} sync jobs with {workers} workers: {timeElapsed.TotalMilliseconds} ms");
+
+// Test with 50 workers, 50 sync jobs of Thread.Sleep(1000) after ThreadPool.SetMinThreads(100, 100)
+
+Console.WriteLine($"Test with 50 workers, 50 sync jobs of Thread.Sleep(1000) after ThreadPool.SetMinThreads(100, 100)");
+
+ThreadPool.SetMinThreads(100, 100);
+
+JobQueue queue2 = new JobQueue(workers);
+
+CountdownEvent countdown2 = new CountdownEvent(jobs);
+
+for (int i = 0; i < jobs; i++)
+{
+    queue2.Submit(() =>
+    {
+        Thread.Sleep(1000);
+        countdown2.Signal();
+    });
+}
+
+long start2 = Stopwatch.GetTimestamp();
+
+queue2.StartProcess();
+
+countdown2.Wait();
+
+TimeSpan timeElapsed2 = Stopwatch.GetElapsedTime(start2);
+
+queue2.StopProcess();
+
+Console.WriteLine($"Total time for {jobs} sync jobs with {workers} workers after ThreadPool.SetMinThreads(100, 100): {timeElapsed2.TotalMilliseconds} ms");
+*/
+
+//Test with 50 workers, 50 async jobs of Task.Delay(1000)
+
+/*
+Console.WriteLine("Test with 50 workers, 50 async jobs of Task.Delay(1000)");
+var jobs = 50;
+var workers = 50;
+
+JobQueue queue = new JobQueue(workers);
+
+CountdownEvent countdown = new CountdownEvent(jobs);
+
+for (int i = 0; i < jobs; i++)
+{
+    queue.Submit(async () =>
+    {
+        await Task.Delay(1000);
+        countdown.Signal();
+    });
+}
+
+long start = Stopwatch.GetTimestamp();
+
+queue.StartProcess();
+
+countdown.Wait();
+
+TimeSpan timeElapsed = Stopwatch.GetElapsedTime(start);
+
+queue.StopProcess();
+
+Console.WriteLine($"Total time for {jobs} async jobs with {workers} workers: {timeElapsed.TotalMilliseconds} ms");
+*/
+
+JobQueue queue = new JobQueue();
+
+queue.Submit(() =>
+{
+    Console.WriteLine("Job 1");
+});
+
+queue.Submit(() =>
+{
+    throw new Exception("Job 2 exception");
+});
+
+queue.Submit(() =>
+{
+    Console.WriteLine("Job 3");
+});
+
+queue.StartProcess();
+Thread.Sleep(1000);
+queue.StopProcess();
