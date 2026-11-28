@@ -14,9 +14,9 @@ namespace Scheduler
 
         private readonly SemaphoreSlim _semaphore;
 
-        private readonly int _numberOfThreads;
+        private readonly int _numberOfTasks;
 
-        private Thread[]? _workers;
+        private Task[]? _tasks;
 
         private CancellationTokenSource? _cts;
 
@@ -26,9 +26,10 @@ namespace Scheduler
 
         #region Constructor
 
-        public JobQueue(int numberOfThreads = 1, TimeSpan? agingInterval = null)
+        // workerCount: max number of jobs running at the same time
+        public JobQueue(int workerCount = 1, TimeSpan? agingInterval = null)
         {
-            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(numberOfThreads, nameof(numberOfThreads));
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(workerCount, nameof(workerCount));
             if (agingInterval is { } interval)
             {
                 ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(interval, TimeSpan.Zero, nameof(agingInterval));
@@ -44,22 +45,59 @@ namespace Scheduler
             }
 
             _semaphore = new SemaphoreSlim(0);
-            _numberOfThreads = numberOfThreads;
+            _numberOfTasks = workerCount;
             _agingInterval = agingInterval;
         }
 
         #endregion
 
         /// <summary>
-        /// Adds a job to the queue for processing.
+        /// Adds a job to the queue for processing. (only for synchronous jobs)
         /// </summary>
-        /// <param name="work">Job that needs to be run</param>
+        /// <param name="action">Job that needs to be run. Normal sync jobs run on pool threads and should be short, and LongRunning is for jobs that block or run for a long time</param>
         /// <param name="priority">Priority of the job</param>
-        public void Submit(Action work, Priority priority = Priority.Moderate)
+        /// <param name="option">Options for the job</param>
+        public void Submit(Action action, Priority priority = Priority.Moderate, JobOption option = JobOption.None)
+        {
+            ArgumentNullException.ThrowIfNull(action);
+            Func<Task> wrappedAction;
+
+            switch (option)
+            {
+                case JobOption.None:
+                    wrappedAction = () =>  
+                    {
+                        action();
+                        return Task.CompletedTask;
+                    };
+                    break;
+
+                case JobOption.LongRunning:
+                    wrappedAction = () =>
+                    {
+                        Task task = Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                        return task;
+                    };
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(option), option, "Invalid job option value provided.");
+            }
+            
+            Submit(wrappedAction, priority);
+        }
+
+        /// <summary>
+        /// Adds a job to queue for processing. (For async jobs)
+        /// </summary>
+        /// <param name="work">Work that needs to be run asynchronously</param>
+        /// <param name="priority">Priority of the work</param>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
+        public void Submit(Func<Task> work, Priority priority = Priority.Moderate)
         {
             ArgumentNullException.ThrowIfNull(work);
 
-            if(!Enum.IsDefined(priority))
+            if (!Enum.IsDefined(priority))
             {
                 throw new ArgumentOutOfRangeException(nameof(priority), priority, "Invalid order priority value provided.");
             }
@@ -68,9 +106,9 @@ namespace Scheduler
             {
                 var timestamp = Stopwatch.GetTimestamp();
                 Job job = new Job(work, timestamp);
-                _jobQueues[(int) priority].Enqueue(job);
+                _jobQueues[(int)priority].Enqueue(job);
             }
-            
+
             _semaphore.Release();
         }
 
@@ -79,19 +117,17 @@ namespace Scheduler
         /// </summary>
         public void StartProcess()
         {
-            if (_workers is null)
+            if (_tasks is null)
             {
                 _cts = new CancellationTokenSource();
 
                 CancellationToken cancellationToken = _cts.Token;
 
-                _workers = new Thread[_numberOfThreads];
+                _tasks = new Task[_numberOfTasks];
 
-                for (int i=0; i<_numberOfThreads; i++)
+                for (int i=0; i<_numberOfTasks; i++)
                 {
-                    _workers[i] = new Thread(() => ProcessJobs(cancellationToken));
-                    _workers[i].Name = $"Worker-{i+1}";
-                    _workers[i].Start();
+                    _tasks[i] = Task.Run(() => ProcessJobsAsync(cancellationToken));
                 }
             }
             else
@@ -104,36 +140,42 @@ namespace Scheduler
         /// Stops the currently running process, if any.
         /// Queued jobs - will remain in the queue and can be processed later.
         /// Running jobs - will be finished before the process stops.
-        /// Blocks until the worker threads has returned.
+        /// Blocks until the worker threads have returned.
         /// </summary>
         public void StopProcess()
         {
-            if (_workers is not null)
+            StopProcessAsync().GetAwaiter().GetResult();
+        }
+
+        public async Task StopProcessAsync()
+        {
+            if (_tasks is not null)
             {
-                _cts!.Cancel();
-
-                foreach (Thread t in _workers)
+                try
                 {
-                    t.Join();
+                    _cts!.Cancel();
+
+                    await Task.WhenAll(_tasks);
                 }
-
-                _cts.Dispose();
-
-                _workers = null;
+                finally
+                {
+                    _cts?.Dispose();
+                    _tasks = null;
+                }
             }
         }
 
         #region Private Methods
 
-        private void ProcessJobs(CancellationToken cancellationToken)
+        private async Task ProcessJobsAsync(CancellationToken cancellationToken)
         {
             try
             {
                 while (true)
                 {
-                    _semaphore.Wait(cancellationToken);
+                    await _semaphore.WaitAsync(cancellationToken);
                     
-                    if (!TryTakeNextJob(out Action? work))
+                    if (!TryTakeNextJob(out Func<Task>? work))
                     {
                         Debug.Fail("A worker held a ticket but no job found. This should never happen.");
                         continue;
@@ -141,11 +183,16 @@ namespace Scheduler
 
                     try
                     {
-                        work.Invoke();
+                        Task? task = work();
+
+                        if (task is not null)
+                        {
+                            await task;
+                        }
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(ex.Message);
+                        Console.WriteLine($"Exception occurred while processing job: {ex}");
                     }
                 }
             }
@@ -176,7 +223,7 @@ namespace Scheduler
         /// Picks the next job (best effective priority; oldest wins a tie) and removes it
         /// from its queue. Returns false if every queue is empty.
         /// </summary>
-        private bool TryTakeNextJob([NotNullWhen(true)] out Action? work)
+        private bool TryTakeNextJob([NotNullWhen(true)] out Func<Task>? work)
         {
             lock (_lock)
             {
@@ -196,7 +243,7 @@ namespace Scheduler
                     int effective = GetEffectivePriority(i, head.EnqueuedAt, now, _agingInterval);
 
                     bool isBetter = effective < bestEffectivePriority
-                        || (effective == bestEffectivePriority && head.EnqueuedAt < bestEnqueuedAt);   // tie: oldest first
+                         || (effective == bestEffectivePriority && head.EnqueuedAt < bestEnqueuedAt);   // tie: oldest first
 
                     if (isBetter)
                     {
