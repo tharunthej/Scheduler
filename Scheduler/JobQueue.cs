@@ -54,17 +54,35 @@ namespace Scheduler
         /// <summary>
         /// Adds a job to the queue for processing. (only for synchronous jobs)
         /// </summary>
-        /// <param name="action">Job that needs to be run. Synchronous jobs run on thread pool threads, blocking one holds the thread</param>
+        /// <param name="action">Job that needs to be run. Normal sync jobs run on pool threads and should be short, and LongRunning is for jobs that block or run for a long time</param>
         /// <param name="priority">Priority of the job</param>
-        public void Submit(Action action, Priority priority = Priority.Moderate)
+        /// <param name="option">Options for the job</param>
+        public void Submit(Action action, Priority priority = Priority.Moderate, JobOption option = JobOption.None)
         {
             ArgumentNullException.ThrowIfNull(action);
+            Func<Task> wrappedAction;
 
-            Func<Task> wrappedAction = () =>
+            switch (option)
             {
-                action();
-                return Task.CompletedTask;
-            };
+                case JobOption.None:
+                    wrappedAction = () =>  
+                    {
+                        action();
+                        return Task.CompletedTask;
+                    };
+                    break;
+
+                case JobOption.LongRunning:
+                    wrappedAction = () =>
+                    {
+                        Task task = Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                        return task;
+                    };
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(option), option, "Invalid job option value provided.");
+            }
             
             Submit(wrappedAction, priority);
         }

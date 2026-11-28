@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using System.Collections.Concurrent;
 
 // Console.WriteLine(Environment.ProcessorCount.ToString());
 
@@ -712,6 +713,7 @@ queue.StopProcess();
 Console.WriteLine($"Total time for {jobs} async jobs with {workers} workers: {timeElapsed.TotalMilliseconds} ms");
 */
 
+/*
 JobQueue queue = new JobQueue();
 
 queue.Submit(() =>
@@ -732,3 +734,132 @@ queue.Submit(() =>
 queue.StartProcess();
 Thread.Sleep(1000);
 queue.StopProcess();
+*/
+
+/*
+long start = Stopwatch.GetTimestamp();
+
+for (int i = 0; i < 10000; i++)
+{
+    Thread t = new Thread(() =>
+    {
+    });
+
+    t.Start();
+    t.Join();
+}
+
+TimeSpan timeElapsed = Stopwatch.GetElapsedTime(start);
+
+
+Console.WriteLine($"A: Total time for 10000 jobs: {timeElapsed.TotalMilliseconds} ms");
+
+long start2 = Stopwatch.GetTimestamp();
+for (int i = 0; i < 10000; i++)
+{
+    Task.Run(() =>
+    {
+
+    }).Wait();
+}
+
+TimeSpan timeSpan2 = Stopwatch.GetElapsedTime(start2);
+
+Console.WriteLine($"B: Total time for 10000 jobs: {timeSpan2.TotalMilliseconds} ms");
+
+var job = () => { };
+
+BlockingCollection<Action> list = new BlockingCollection<Action>();
+SemaphoreSlim semaphore = new SemaphoreSlim(0);
+
+Thread t1 = new Thread(() =>
+{
+    foreach (var item in list.GetConsumingEnumerable())
+    {
+        item.Invoke();
+        semaphore.Release();
+    }
+});
+
+t1.Start();
+for (int i=0; i<100;i++)
+{
+    list.Add(job);
+    semaphore.Wait();
+}
+
+long start3 = Stopwatch.GetTimestamp();
+for (int i = 0; i < 10000; i++)
+{
+    list.Add(job);
+    semaphore.Wait();
+}
+list.CompleteAdding();
+t1.Join();
+TimeSpan timeSpan3 = Stopwatch.GetElapsedTime(start3);
+
+Console.WriteLine($"C: Total time for 10000 jobs with long lived thread: {timeSpan3.TotalMilliseconds} ms");
+*/
+
+JobQueue queue = new JobQueue();
+CountdownEvent countdown = new CountdownEvent(3);
+
+for (int i = 0; i < 3; i++)
+{
+    queue.Submit(() =>
+    {
+        Console.WriteLine("Job Started");
+        Thread.Sleep(1000);
+        countdown.Signal();
+    }, Priority.Moderate, JobOption.LongRunning);
+}
+
+Console.WriteLine("Starting job processing...");
+queue.StartProcess();
+
+countdown.Wait();
+
+queue.StopProcess();
+
+JobQueue queue2 = new JobQueue(2);
+CountdownEvent countdown2 = new CountdownEvent(6);
+
+for (int i = 0; i < 6; i++)
+{
+    queue2.Submit(() =>
+    {
+        Thread.Sleep(1000);
+        Console.WriteLine($"{Thread.CurrentThread.IsThreadPoolThread}");
+        countdown2.Signal();
+    }, Priority.Moderate, JobOption.LongRunning);
+}
+
+long start = Stopwatch.GetTimestamp();
+
+queue2.StartProcess();
+
+countdown2.Wait();
+
+TimeSpan timeElapsed = Stopwatch.GetElapsedTime(start);
+
+queue2.StopProcess();
+
+Console.WriteLine($"Total time for 6 jobs with 2 workers: {timeElapsed.TotalMilliseconds} ms");
+
+int count = 0;
+
+JobQueue queue3 = new JobQueue();
+
+queue3.Submit(() =>
+{
+    Interlocked.Increment(ref count);
+}, Priority.Moderate, JobOption.LongRunning);
+
+queue3.StartProcess();
+
+Thread.Sleep(1000);
+
+queue3.StopProcess();
+
+Console.WriteLine($"Count after job execution: {count}");
+
